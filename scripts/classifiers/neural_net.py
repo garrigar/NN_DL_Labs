@@ -4,7 +4,11 @@ from builtins import range
 from builtins import object
 import numpy as np
 import matplotlib.pyplot as plt
-from past.builtins import xrange
+# from past.builtins import xrange
+
+from scripts.layers import softmax_loss, affine_forward, affine_backward
+from scripts.layer_utils import affine_relu_forward, affine_relu_backward
+
 
 class TwoLayerNet(object):
     """
@@ -80,7 +84,8 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        A1, cache1 = affine_relu_forward(X, W1, b1)
+        scores, cache2 = affine_forward(A1, W2, b2)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -98,7 +103,12 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # data loss
+        loss, dscores = softmax_loss(scores, y)
+
+        # add L2 regularization
+        loss += reg * (np.sum(W1 * W1) + np.sum(W2 * W2))  # * 0.5  # we can simplify the expression for gradient,
+        # but in that case we will not pass the loss difference check
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -111,7 +121,15 @@ class TwoLayerNet(object):
         #############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # backward pass
+        dA1, dW2, db2 = affine_backward(dscores, cache2)
+        dX, dW1, db1 = affine_relu_backward(dA1, cache1)
+
+        # add the gradient of the L2 regularization
+        grads['W2'] = dW2 + reg * W2
+        grads['b2'] = db2
+        grads['W1'] = dW1 + reg * W1
+        grads['b1'] = db1
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -156,7 +174,9 @@ class TwoLayerNet(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-            pass
+            sample_idx = np.random.choice(num_train, batch_size)
+            X_batch = X[sample_idx]
+            y_batch = y[sample_idx]
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -172,7 +192,8 @@ class TwoLayerNet(object):
             #########################################################################
             # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-            pass
+            for w in self.params:
+                self.params[w] -= grads[w].reshape(self.params[w].shape) * learning_rate
 
             # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
@@ -218,7 +239,8 @@ class TwoLayerNet(object):
         ###########################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        scores = self.loss(X)
+        y_pred = np.argmax(scores, axis=1)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
