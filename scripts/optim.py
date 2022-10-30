@@ -69,7 +69,12 @@ def sgd_momentum(w, dw, config=None):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    # SGD with Momentum update equations
+    # v = mu * v - learning_rate * dx # integrate velocity
+    # x += v # integrate position
+
+    v = config["momentum"] * v - config["learning_rate"] * dw
+    next_w = w + v
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -107,7 +112,15 @@ def rmsprop(w, dw, config=None):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    eps, learning_rate = config['epsilon'], config['learning_rate']
+    decay_rate, cache = config['decay_rate'], config['cache']
+
+    # keep an exponentially weighted moving average (EWMA) of the squared graident for each weight
+    cache = decay_rate * cache + (1 - decay_rate) * (dw * dw)
+
+    next_w = w - learning_rate * dw / (np.sqrt(cache) + eps)
+
+    config["cache"] = cache
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################
@@ -152,7 +165,30 @@ def adam(w, dw, config=None):
     ###########################################################################
     # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-    pass
+    eps, learning_rate = config['epsilon'], config['learning_rate']
+    beta1, beta2 = config['beta1'], config['beta2']
+    m, v, t = config['m'], config['v'], config['t']
+
+    # update timestep before using it in any calculations
+    t += 1
+
+    # update biased first moment estimate
+    m = beta1 * m + (1 - beta1) * dw
+
+    # update biased second raw moment estimate
+    v = beta2 * v + (1 - beta2) * (dw * dw)
+
+    # compute bias-corrected first moment estimate
+    mt = m / (1 - beta1 ** t)
+
+    # compute bias-corrected second raw moment estimate
+    vt = v / (1 - beta2 ** t)
+
+    # update parameters
+    next_w = w - learning_rate * mt / (np.sqrt(vt) + eps)
+
+    # update values
+    config['m'], config['v'], config['t'] = m, v, t
 
     # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
     ###########################################################################

@@ -55,7 +55,10 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        self.params['W1'] = np.random.randn(input_dim, hidden_dim) * weight_scale
+        self.params['W2'] = np.random.randn(hidden_dim, num_classes) * weight_scale
+        self.params['b1'] = np.zeros(hidden_dim)
+        self.params['b2'] = np.zeros(num_classes)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -88,7 +91,15 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # unpack self.params
+        W1 = self.params['W1']
+        b1 = self.params['b1']
+        W2 = self.params['W2']
+        b2 = self.params['b2']
+
+        # forward pass
+        A1, cache1 = affine_relu_forward(X, W1, b1)
+        scores, cache2 = affine_forward(A1, W2, b2)
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -112,7 +123,21 @@ class TwoLayerNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # data loss
+        loss, dscores = softmax_loss(scores, y)
+
+        # L2 regularization
+        loss += 0.5 * self.reg * (np.sum(W1 * W1) + np.sum(W2 * W2))
+
+        # backward pass
+        dA1, dW2, db2 = affine_backward(dscores, cache2)
+        dX, dW1, db1 = affine_relu_backward(dA1, cache1)
+
+        # the gradient of the L2 regularization
+        grads['W2'] = dW2 + self.reg * W2
+        grads['b2'] = db2
+        grads['W1'] = dW1 + self.reg * W1
+        grads['b1'] = db1
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -192,7 +217,24 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # hstack together the dims for easy access within the for loop
+        # (and to avoid splitting the case of the first layer and the last one)
+        layer_dims = np.hstack([input_dim, hidden_dims, num_classes])
+
+        # NOTE that we can index i+1 in this loop because self.num_layers does not include the input layer
+        for layer in range(self.num_layers):
+            self.params['W' + str(layer + 1)] = np.random.randn(layer_dims[layer],
+                                                                layer_dims[layer + 1]) * weight_scale
+            self.params['b' + str(layer + 1)] = np.zeros(layer_dims[layer + 1])
+
+        # batch/layer norm params
+        if self.normalization:
+            # batch/layer norm doesn't apply to the output, hence the -1
+            for layer in range(self.num_layers - 1):
+                # scale params aka gamma(s)
+                self.params['gamma' + str(layer + 1)] = np.ones((layer_dims[layer + 1]))
+                # shift params aka beta(s)
+                self.params['beta' + str(layer + 1)] = np.zeros((layer_dims[layer + 1]))
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -254,7 +296,39 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # {affine - [batch/layer norm] - relu - [dropout]} x (L - 1) - affine - softmax
+        # split computation for the first (L - 1) layers since they use ReLU
+        # but the last layer doesn't (nor uses it batch/layer norm nor dropout)
+
+        caches = {}  # init cache with a 0 to match index with self.params
+
+        # (1) {affine - [batch/layer norm] - relu - [dropout]} x (L - 1)
+        for layer in range(self.num_layers - 1):
+            W = self.params['W' + str(layer + 1)]
+            b = self.params['b' + str(layer + 1)]
+
+            if self.normalization:
+                gamma = self.params['gamma' + str(layer + 1)]
+                beta = self.params['beta' + str(layer + 1)]
+                bn_params = self.bn_params[layer]
+
+                # affine -> batch norm -> relu
+                X, cache = affine_norm_relu_forward(X, W, b, gamma, beta, bn_params, self.normalization)
+            else:
+                # no batch/layer norm
+                X, cache = affine_relu_forward(X, W, b)
+            caches[layer + 1] = cache
+
+            # dropout layer after ReLU
+            if self.use_dropout:
+                X, cache = dropout_forward(X, self.dropout_param)
+                caches['dropout' + str(layer + 1)] = cache
+
+        # (2) affine - softmax
+        W = self.params['W' + str(self.num_layers)]
+        b = self.params['b' + str(self.num_layers)]
+        scores, cache = affine_forward(X, W, b)
+        caches[self.num_layers] = cache
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
@@ -281,7 +355,38 @@ class FullyConnectedNet(object):
         ############################################################################
         # *****START OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
 
-        pass
+        # (2) softmax
+        # calculate data loss
+        loss, dout = softmax_loss(scores, y)
+
+        # add regularization loss
+        for layer in range(self.num_layers):
+            W = self.params['W' + str(layer + 1)]
+            loss += 0.5 * self.reg * np.sum(W * W)
+
+        # (2) (1) {affine - [batch/layer norm] - relu - [dropout]} x (L - 1) - affine
+        # split computation for the last layer for the same reasons as above
+        # last hidden layer (no batch normalization, no relu, no dropout)
+        dout, dw, db = affine_backward(dout, caches[self.num_layers])
+        grads['W' + str(self.num_layers)] = dw + self.reg * self.params['W' + str(self.num_layers)]
+        grads['b' + str(self.num_layers)] = db
+
+        for layer in range(self.num_layers - 2, -1, -1):
+            # backward dropout before the last hidden layer
+            if self.use_dropout:
+                dout = dropout_backward(dout, caches['dropout' + str(layer + 1)])
+
+            if self.normalization:
+                # drelu -> dbatchnorm -> daffine
+                dout, dw, db, dgamma, dbeta = affine_norm_relu_backward(dout, caches[layer + 1], self.normalization)
+                grads['gamma' + str(layer + 1)] = dgamma
+                grads['beta' + str(layer + 1)] = dbeta
+            else:
+                dout, dw, db = affine_relu_backward(dout, caches[layer + 1])
+
+            # save data loss and add derivative of the regularization loss to dw
+            grads['W' + str(layer + 1)] = dw + self.reg * self.params['W' + str(layer + 1)]
+            grads['b' + str(layer + 1)] = db
 
         # *****END OF YOUR CODE (DO NOT DELETE/MODIFY THIS LINE)*****
         ############################################################################
